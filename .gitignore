@@ -1,0 +1,43 @@
+# C++ build artifacts
+core/build/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+core/core
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Пользовательские данные
+data/
+.recon/
+
+# Тестовые образцы бинарников — никогда не коммитим!
+tests/samples/
+!tests/samples/.gitkeep
+!tests/samples/README.md
+
+# Логи и временные файлы
+*.log
+*.tmp

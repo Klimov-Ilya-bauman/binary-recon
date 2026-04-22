@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        python-version: ['3.9', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake jq
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build C++ core
+        run: |
+          cd core/build
+          cmake ..
+          make
+
+      - name: Install Python package
+        run: |
+          cd python
+          pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        run: |
+          cd python
+          ruff check recon/ || true   # пока ещё кода нет, не фейлим
+
+      - name: Run tests
+        run: |
+          make test || true   # снимем || true после появления тестов
