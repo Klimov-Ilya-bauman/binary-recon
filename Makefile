@@ -17,6 +17,7 @@ help:
 
 build:
 	@echo "=== Сборка C++ ядра ==="
+	mkdir -p core/build
 	cd core/build && cmake .. && $(MAKE)
 	@echo "=== Сборка Python пакета ==="
 	cd python && $(PYTHON) -m pip install -e . --break-system-packages
