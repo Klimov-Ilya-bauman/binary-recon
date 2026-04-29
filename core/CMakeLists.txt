@@ -12,12 +12,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 endif()
 
-# Исходники. По мере реализации будем добавлять файлы в этот список.
 add_executable(core
     src/main.cpp
     src/format_detect.cpp
+    src/hashes.cpp
 )
 
 target_include_directories(core PRIVATE include)
-
 install(TARGETS core RUNTIME DESTINATION lib/binary-recon)
