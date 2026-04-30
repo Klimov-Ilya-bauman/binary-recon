@@ -8,27 +8,13 @@ severity для отдельных импортов умеренная (LOW/MEDI
 hardcoded URL/IP в строках — это типично для C&C-связи (Command and
 Control), когда вредонос связывается с управляющим сервером.
 
-Что детектор ищет:
-
-  Windows:
-    - Winsock 2 API:    WSAStartup, socket, connect, send, recv, ...
-    - WinINet:          InternetOpenA, InternetConnectA, HttpSendRequestA
-    - WinHTTP:          WinHttpOpen, WinHttpConnect, WinHttpSendRequest
-    - URLDownloadToFile — типичный downloader, скачивает payload.
-
-  Linux:
-    - sockets:          socket, connect, bind, listen, accept, send, recv
-    - DNS:              gethostbyname, getaddrinfo, res_query
-    - libcurl:          curl_easy_init, curl_easy_perform
-
-  Строки (регулярки):
-    - URL:              http://..., https://...
-    - IPv4:             1-3 цифры . 1-3 . 1-3 . 1-3
-    - User-Agent:       наличие "User-Agent:" — почти всегда HTTP-клиент
-
-Hardcoded IP-адрес или URL в бинарнике — сильный индикатор C&C: легитимный
-софт либо берёт адрес из конфига/настроек пользователя, либо использует
-домен с DNS-резолвингом. Хардкод адреса прямо в .text — почти всегда вредонос.
+Калибровка severity для URL/IP:
+  - URL на whitelist-домен (gnu.org, github.com, ...): не finding вовсе.
+    Это типичные ссылки из --help выводов и документации.
+  - URL на остальные домены: LOW (слабый индикатор, нужны ещё подсказки).
+  - URL с подозрительными TLD/паттернами (.onion, .top, dynamic DNS): MEDIUM.
+  - URL вида http://<IP>: HIGH (классика C&C).
+  - "Голый" IP-адрес в строке: MEDIUM.
 """
 
 from __future__ import annotations
@@ -66,9 +52,14 @@ _DOWNLOADER_API = (
     "URLDownloadToCacheFileA",
 )
 
-_LINUX_NETWORK = (
+# POSIX socket — функции, реально означающие активный сетевой код.
+# nss/resolver затаскивает gethostbyname/getaddrinfo, поэтому одних их мало.
+_LINUX_NETWORK_ACTIVE = (
     "socket", "connect", "bind", "listen", "accept",
     "send", "recv", "sendto", "recvfrom",
+)
+
+_LINUX_NETWORK_PASSIVE = (
     "gethostbyname", "getaddrinfo",
 )
 
@@ -79,75 +70,163 @@ _CURL_API = (
 
 # ---- Регулярные выражения для строк ----
 
-# URL (http/https) — простой паттерн, не идеальный, но достаточный.
 _URL_RE = re.compile(r'\bhttps?://[^\s"\'<>\x00-\x1f]{4,}', re.IGNORECASE)
-
-# IPv4 — 4 числа от 0 до 255, разделённые точками.
-# Чтобы избежать false positive на строках вроде "version 1.2.3.4",
-# проверим что предшествующий контекст не выглядит как версия.
 _IPV4_RE = re.compile(
     r'\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}'
     r'(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b'
 )
+# Извлечение домена из URL — упрощённый паттерн.
+_HOST_FROM_URL_RE = re.compile(r'^https?://([^/?#:]+)', re.IGNORECASE)
+
+
+# Whitelist легитимных доменов. URL на эти домены вообще не считаем
+# подозрительными — типичные ссылки в --help выводах open-source утилит,
+# в документации и в строках лицензий.
+_BENIGN_DOMAINS = frozenset({
+    "gnu.org",
+    "fsf.org",
+    "kernel.org",
+    "github.com",
+    "gitlab.com",
+    "savannah.gnu.org",
+    "savannah.nongnu.org",
+    "translationproject.org",
+    "wiki.xiph.org",
+    "xiph.org",
+    "freedesktop.org",
+    "python.org",
+    "debian.org",
+    "ubuntu.com",
+    "redhat.com",
+    "fedoraproject.org",
+    "archlinux.org",
+    "microsoft.com",
+    "apple.com",
+    "openssl.org",
+    "boost.org",
+    "cmake.org",
+    "w3.org",
+    "ietf.org",
+    "iana.org",
+    "unicode.org",
+})
+
+# Подозрительные TLD: часто используются в фишинге/малвари из-за
+# дешёвой регистрации или специфики использования.
+_SUSPICIOUS_TLDS = (
+    ".onion",
+    ".top",
+    ".xyz",
+    ".tk",
+    ".ml",
+    ".ga",
+    ".cf",
+    ".click",
+)
+
+
+def _extract_host(url: str) -> str:
+    """Достаёт хост из URL. Возвращает '' если не удалось распарсить."""
+    m = _HOST_FROM_URL_RE.match(url)
+    if not m:
+        return ""
+    return m.group(1).lower()
+
+
+def _is_benign_host(host: str) -> bool:
+    """True если host или любой из его суффиксов есть в whitelist."""
+    if not host:
+        return False
+    if host in _BENIGN_DOMAINS:
+        return True
+    # Проверяем суффиксы: example.gnu.org → gnu.org должен совпасть.
+    parts = host.split(".")
+    for i in range(1, len(parts)):
+        suffix = ".".join(parts[i:])
+        if suffix in _BENIGN_DOMAINS:
+            return True
+    return False
+
+
+def _is_ip_host(host: str) -> bool:
+    """True если host — это IPv4-адрес (а не доменное имя)."""
+    return bool(_IPV4_RE.fullmatch(host))
+
+
+def _is_suspicious_tld(host: str) -> bool:
+    return any(host.endswith(tld) for tld in _SUSPICIOUS_TLDS)
 
 
 class NetworkDetector(BaseDetector):
     NAME = "Network"
 
-    # IP-адреса, которые НЕ считаем подозрительными (loopback, broadcast).
     _BENIGN_IPS = frozenset({
         "0.0.0.0", "127.0.0.1", "255.255.255.255",
-        "1.0.0.0", "1.2.3.4",  # часто встречаются в примерах
+        "1.0.0.0", "1.2.3.4",
     })
 
     def detect(self, analysis: AnalysisResult) -> DetectorResult:
         result = DetectorResult(detector=self.NAME)
 
-        # ---- Импорты ----
-        winsock = self.find_imports_matching(analysis, list(_WINSOCK_BASIC))
-        if winsock:
-            result.findings.append(Finding(
-                detector=self.NAME,
-                name="winsock_api",
-                description=f"Windows Sockets API in use ({len(winsock)} functions)",
-                severity=Severity.MEDIUM,
-                evidence=", ".join(winsock[:5]) + (
-                    f", +{len(winsock) - 5} more" if len(winsock) > 5 else ""),
-            ))
+        # ---- Импорты PE/Winsock ----
+        if analysis.format == "PE":
+            winsock = self.find_imports_matching(analysis, list(_WINSOCK_BASIC))
+            if winsock:
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="winsock_api",
+                    description=f"Windows Sockets API in use ({len(winsock)} functions)",
+                    severity=Severity.MEDIUM,
+                    evidence=", ".join(winsock[:5]) + (
+                        f", +{len(winsock) - 5} more" if len(winsock) > 5 else ""),
+                ))
 
-        http_api = self.find_imports_matching(analysis, list(_HTTP_API))
-        if http_api:
-            result.findings.append(Finding(
-                detector=self.NAME,
-                name="http_api",
-                description="HTTP client API (WinINet/WinHTTP)",
-                severity=Severity.MEDIUM,
-                evidence=", ".join(http_api[:5]),
-            ))
+            http_api = self.find_imports_matching(analysis, list(_HTTP_API))
+            if http_api:
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="http_api",
+                    description="HTTP client API (WinINet/WinHTTP)",
+                    severity=Severity.MEDIUM,
+                    evidence=", ".join(http_api[:5]),
+                ))
 
-        downloader = self.find_imports_matching(analysis, list(_DOWNLOADER_API))
-        if downloader:
-            result.findings.append(Finding(
-                detector=self.NAME,
-                name="downloader_api",
-                description="URLDownloadToFile API — typical downloader pattern",
-                severity=Severity.HIGH,
-                evidence=", ".join(downloader),
-            ))
+            downloader = self.find_imports_matching(analysis, list(_DOWNLOADER_API))
+            if downloader:
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="downloader_api",
+                    description="URLDownloadToFile API — typical downloader pattern",
+                    severity=Severity.HIGH,
+                    evidence=", ".join(downloader),
+                ))
 
-        # Linux — те же socket/connect могут быть в ELF.
-        # Но в ELF мы не различаем Winsock и POSIX, поэтому
-        # для PE мы уже выдали findings выше; для ELF выдаём отдельный.
+        # ---- Импорты ELF/POSIX ----
+        # Только активные функции (socket/connect/send/...) реально означают
+        # сеть. Одних gethostbyname мало — это nss/resolver, есть в любом
+        # бинарнике, использующем имена пользователей через NIS/LDAP.
         if analysis.format == "ELF":
-            linux_net = self.find_imports_matching(analysis, list(_LINUX_NETWORK))
-            if linux_net:
+            active = self.find_imports_matching(analysis, list(_LINUX_NETWORK_ACTIVE))
+            passive = self.find_imports_matching(analysis, list(_LINUX_NETWORK_PASSIVE))
+            if len(active) >= 3:
                 result.findings.append(Finding(
                     detector=self.NAME,
                     name="posix_socket_api",
-                    description=f"POSIX socket API ({len(linux_net)} functions)",
-                    severity=Severity.LOW,  # слишком распространено в Linux
-                    evidence=", ".join(linux_net[:5]),
+                    description=f"POSIX socket API ({len(active)} functions)",
+                    severity=Severity.LOW,
+                    evidence=", ".join(active[:5]),
                 ))
+            elif active:
+                # 1-2 функции — может быть обычный код, может — нет.
+                # Выдаём LOW finding, но с явной пометкой "partial".
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="posix_socket_partial",
+                    description=f"Partial POSIX socket API ({len(active)} fn)",
+                    severity=Severity.LOW,
+                    evidence=", ".join(active),
+                ))
+            # passive (gethostbyname etc.) сам по себе не finding.
 
         curl = self.find_imports_matching(analysis, list(_CURL_API))
         if curl:
@@ -161,17 +240,47 @@ class NetworkDetector(BaseDetector):
 
         # ---- Строки: URL ----
         urls = self._find_urls(analysis.strings)
-        for url in urls[:10]:  # ограничим количество findings
+        for url in urls[:10]:
+            host = _extract_host(url)
+
+            # 1. Whitelist — пропускаем без finding'а.
+            if _is_benign_host(host):
+                continue
+
             evidence = url if len(url) <= 100 else url[:97] + "..."
+
+            # 2. URL с IP вместо домена — почти всегда C&C.
+            if _is_ip_host(host):
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="url_with_ip",
+                    description="URL pointing directly to an IP address (typical of C&C)",
+                    severity=Severity.HIGH,
+                    evidence=evidence,
+                ))
+                continue
+
+            # 3. Подозрительный TLD.
+            if _is_suspicious_tld(host):
+                result.findings.append(Finding(
+                    detector=self.NAME,
+                    name="url_suspicious_tld",
+                    description="URL on suspicious top-level domain",
+                    severity=Severity.MEDIUM,
+                    evidence=evidence,
+                ))
+                continue
+
+            # 4. Обычный URL не в whitelist — слабый индикатор.
             result.findings.append(Finding(
                 detector=self.NAME,
                 name="hardcoded_url",
                 description="Hardcoded URL in binary",
-                severity=Severity.MEDIUM,
+                severity=Severity.LOW,
                 evidence=evidence,
             ))
 
-        # ---- Строки: IPv4 ----
+        # ---- Строки: голый IPv4 ----
         ips = self._find_suspicious_ips(analysis.strings)
         for ip in ips[:10]:
             result.findings.append(Finding(
@@ -202,16 +311,11 @@ class NetworkDetector(BaseDetector):
         found: list[str] = []
         seen: set[str] = set()
         for s in strings:
-            # Пропускаем строки, содержащие "version" / "Version" — там IP-подобные
-            # фрагменты на самом деле версии (например, "Version 1.2.3.4").
             if "version" in s.lower():
                 continue
             for ip in _IPV4_RE.findall(s):
                 if ip in cls._BENIGN_IPS or ip in seen:
                     continue
-                # Также фильтруем явные "версии": если IP — единственное
-                # содержимое строки или окружён только пробелами/точками,
-                # вероятно это всё-таки версия. Эмпирика.
                 seen.add(ip)
                 found.append(ip)
         return found
