@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (${{ matrix.os }})
+    name: Build & Test (${{ matrix.os }} / Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,8 +44,9 @@ jobs:
       - name: Lint with ruff
         run: |
           cd python
-          ruff check recon/ || true   # пока ещё кода нет, не фейлим
+          ruff check recon/ || true
 
-      - name: Run tests
+      - name: Run smoke tests
         run: |
-          make test || true   # снимем || true после появления тестов
+          cd python
+          python -m pytest ../tests/python -v
