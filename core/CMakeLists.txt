@@ -16,6 +16,7 @@ add_executable(core
     src/main.cpp
     src/format_detect.cpp
     src/hashes.cpp
+    src/elf_parser.cpp
 )
 
 target_include_directories(core PRIVATE include)
