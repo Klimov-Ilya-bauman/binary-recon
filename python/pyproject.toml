@@ -43,6 +43,7 @@ dev = [
 [project.scripts]
 recon = "recon.__main__:main"
 recon-tui = "recon.tui.app:main"
+recon-batch = "recon.batch_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

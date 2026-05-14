@@ -107,11 +107,9 @@ class WelcomeScreen(Screen):
         self.app.push_screen(AnalyzeScreen())
 
     def action_batch(self) -> None:
-        """Открыть экран batch-сканирования. На День 8 — заглушка."""
-        self.app.push_screen(_NotImplementedScreen(
-            "Batch Scan",
-            "Batch scanning will be implemented in Day 12."
-        ))
+        """Открыть экран batch-сканирования."""
+        from recon.tui.screens.batch import BatchScreen
+        self.app.push_screen(BatchScreen())
 
     def action_history(self) -> None:
         """Открыть экран истории."""

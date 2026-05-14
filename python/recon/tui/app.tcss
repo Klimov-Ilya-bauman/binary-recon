@@ -278,3 +278,11 @@ ExportModalScreen {
 
 #exp-path { margin-bottom: 1; }
 #exp-status { content-align: center middle; }
+
+/* BATCH SCREEN */
+#batch-root { padding: 1 2; height: 100%; }
+#batch-path { margin-bottom: 1; }
+#batch-start { width: 20; margin-bottom: 1; }
+#batch-progress { margin-bottom: 1; }
+#batch-status { margin-bottom: 1; }
+#batch-table { height: 1fr; }
