@@ -101,12 +101,10 @@ class WelcomeScreen(Screen):
     # ---- Actions для биндингов ----
 
     def action_analyze(self) -> None:
-        """Открыть экран анализа файла. На День 8 — заглушка."""
-        self.app.push_screen(_NotImplementedScreen(
-            "Analyze File",
-            "This screen will be implemented in Day 9.\n"
-            "You can already analyze files via CLI: recon /path/to/file"
-        ))
+        """Открыть экран анализа файла."""
+        # late-import предотвращает циклическую зависимость на уровне модулей
+        from recon.tui.screens.analyze import AnalyzeScreen
+        self.app.push_screen(AnalyzeScreen())
 
     def action_batch(self) -> None:
         """Открыть экран batch-сканирования. На День 8 — заглушка."""
