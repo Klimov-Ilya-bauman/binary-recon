@@ -115,6 +115,10 @@ def main() -> int:
                         help="Brief one-line output")
     parser.add_argument("--no-color", action="store_true",
                         help="Disable ANSI colors")
+    parser.add_argument("--export", choices=["json", "html", "markdown", "md"],
+                        help="Export full report to a file")
+    parser.add_argument("-o", "--output", metavar="PATH",
+                        help="Output path for --export (default: report.<ext>)")
     parser.add_argument("-V", "--version", action="version",
                         version=f"%(prog)s {__version__}")
 
@@ -130,6 +134,14 @@ def main() -> int:
     except CoreError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 3
+
+    if args.export:
+        from recon.export.exporter import export_to_file
+        fmt = args.export
+        ext = "md" if fmt in ("markdown", "md") else fmt
+        out_path = args.output or f"report.{ext}"
+        saved = export_to_file(fa, fmt, out_path)
+        print(f"Report saved to: {saved}", file=sys.stderr)
 
     if args.json:
         print(json.dumps(_to_dict(fa), indent=2))

@@ -2,8 +2,8 @@
 Smoke tests. Проверяют, что базовый pipeline работает end-to-end и
 что калибровка детекторов не уехала.
 
-Пропускаются на CI, если C++ ядро не собрано — это нормально, основная
-сборка уже проверяет компиляцию отдельным шагом.
+Тесты выключают save_to_history, чтобы не плодить мусор в ~/.recon/.
+Сама работа с БД проверяется отдельно в test_database.py.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CORE_BIN = REPO_ROOT / "core" / "build" / "core"
 
-# Если ядро не собрано — пропускаем все тесты в этом модуле.
 pytestmark = pytest.mark.skipif(
     not CORE_BIN.is_file() or not os.access(CORE_BIN, os.X_OK),
     reason=f"C++ core not built at {CORE_BIN}",
@@ -25,16 +24,15 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def analyzer():
-    """Создаём один Analyzer на весь модуль — экономит время."""
+    """
+    Analyzer для smoke-тестов: без сохранения в БД, чтобы не
+    оставлять следов в ~/.recon/.
+    """
     from recon.analyzer import Analyzer
-    return Analyzer()
+    return Analyzer(save_to_history=False)
 
 
 def test_bin_ls_is_clean(analyzer):
-    """
-    /bin/ls — системная утилита, не должна давать никаких findings.
-    Если этот тест упал — кто-то перекалибровал детекторы слишком агрессивно.
-    """
     result = analyzer.analyze("/bin/ls")
     assert result.risk.score == 0, (
         f"/bin/ls expected CLEAN (0), got {result.risk.score}: "
@@ -45,7 +43,6 @@ def test_bin_ls_is_clean(analyzer):
 
 
 def test_bin_ls_metadata_correct(analyzer):
-    """Базовая проверка, что core корректно парсит ELF."""
     result = analyzer.analyze("/bin/ls")
     a = result.analysis
     assert a.format == "ELF"
@@ -58,11 +55,6 @@ def test_bin_ls_metadata_correct(analyzer):
 
 
 def test_hello_exe_detects_isdebuggerpresent(analyzer):
-    """
-    hello.exe собран mingw с явным вызовом IsDebuggerPresent.
-    AntiDebug-детектор обязан это поймать.
-    Тест пропускается, если файла нет (например, mingw не установлен).
-    """
     hello = REPO_ROOT / "tests" / "samples" / "windows" / "hello.exe"
     if not hello.is_file():
         pytest.skip("hello.exe not built — run mingw-w64 setup")
@@ -83,7 +75,6 @@ def test_hello_exe_detects_isdebuggerpresent(analyzer):
 
 
 def test_pe_format_detection(analyzer):
-    """PE-парсер должен корректно определять класс и архитектуру."""
     hello = REPO_ROOT / "tests" / "samples" / "windows" / "hello.exe"
     if not hello.is_file():
         pytest.skip("hello.exe not built")
@@ -93,6 +84,5 @@ def test_pe_format_detection(analyzer):
     assert a.bits == 64
     assert a.arch == "x86_64"
     assert a.image_base > 0
-    # KERNEL32 должен быть среди импортов hello.exe
     dlls = {imp.dll.lower() for imp in a.imports if imp.dll}
     assert "kernel32.dll" in dlls

@@ -114,11 +114,9 @@ class WelcomeScreen(Screen):
         ))
 
     def action_history(self) -> None:
-        """Открыть экран истории. На День 8 — заглушка."""
-        self.app.push_screen(_NotImplementedScreen(
-            "History",
-            "Scan history (SQLite) will be implemented in Day 10."
-        ))
+        """Открыть экран истории."""
+        from recon.tui.screens.history import HistoryScreen
+        self.app.push_screen(HistoryScreen())
 
 
 # =============================================================================

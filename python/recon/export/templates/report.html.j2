@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Binary Recon Report — {{ analysis.filepath }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 1100px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+    color: #1a1a1a;
+    background: #f6f8fa;
+    line-height: 1.5;
+  }
+  h1, h2 { color: #0d1117; border-bottom: 2px solid #d0d7de; padding-bottom: 0.3rem; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.3rem; margin-top: 2rem; }
+  .meta { color: #57606a; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .card {
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .risk-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 1.5rem;
+    border-radius: 8px;
+    color: #fff;
+    margin-bottom: 1.5rem;
+  }
+  .risk-CLEAN    { background: #1a7f37; }
+  .risk-LOW      { background: #0969da; }
+  .risk-MEDIUM   { background: #bf8700; }
+  .risk-HIGH     { background: #cf222e; }
+  .risk-CRITICAL { background: #8250df; }
+  .risk-score { font-size: 2.4rem; font-weight: bold; }
+  .risk-level { font-size: 1rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.1em; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.5rem 0.8rem;
+    text-align: left;
+    border-bottom: 1px solid #eaeef2;
+  }
+  th { background: #f6f8fa; font-weight: 600; }
+  tr:hover td { background: #f6f8fa; }
+  code {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    background: #eff1f3;
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+    font-size: 0.88em;
+  }
+  .severity {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #fff;
+  }
+  .severity-LOW      { background: #0969da; }
+  .severity-MEDIUM   { background: #bf8700; }
+  .severity-HIGH     { background: #cf222e; }
+  .severity-CRITICAL { background: #8250df; }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.8rem;
+  }
+  .metric { padding: 0.6rem 0.8rem; background: #f6f8fa; border-radius: 5px; }
+  .metric-label { color: #57606a; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .metric-value { font-family: ui-monospace, monospace; font-size: 0.95rem; word-break: break-all; }
+  .footer { margin-top: 3rem; color: #57606a; font-size: 0.85rem; text-align: center; }
+</style>
+</head>
+<body>
+
+  <h1>Binary Recon Report</h1>
+  <div class="meta">Generated {{ generated_at }} · File: <code>{{ analysis.filepath }}</code></div>
+
+  <div class="risk-banner risk-{{ risk.level.value }}">
+    <div>
+      <div class="risk-level">{{ risk.level.value }}</div>
+      <div>{{ risk.summary }}</div>
+    </div>
+    <div class="risk-score">{{ risk.score }}/100</div>
+  </div>
+
+  <div class="card">
+    <h2>File Metadata</h2>
+    <div class="metric-grid">
+      <div class="metric"><div class="metric-label">Format</div><div class="metric-value">{{ analysis.format }}</div></div>
+      <div class="metric"><div class="metric-label">Architecture</div><div class="metric-value">{{ analysis.arch }} ({{ analysis.bits }}-bit)</div></div>
+      <div class="metric"><div class="metric-label">Size</div><div class="metric-value">{{ '{:,}'.format(analysis.size) }} bytes</div></div>
+      <div class="metric"><div class="metric-label">Entropy</div><div class="metric-value">{{ '%.4f' % analysis.entropy }}</div></div>
+      <div class="metric"><div class="metric-label">MD5</div><div class="metric-value">{{ analysis.md5 }}</div></div>
+      <div class="metric"><div class="metric-label">SHA-256</div><div class="metric-value">{{ analysis.sha256 }}</div></div>
+      <div class="metric"><div class="metric-label">Entry Point</div><div class="metric-value">0x{{ '%x' % analysis.entry_point }}</div></div>
+      {% if analysis.format == 'PE' %}
+      <div class="metric"><div class="metric-label">Image Base</div><div class="metric-value">0x{{ '%x' % analysis.image_base }}</div></div>
+      <div class="metric"><div class="metric-label">Subsystem</div><div class="metric-value">{{ analysis.file_type }}</div></div>
+      {% else %}
+      <div class="metric"><div class="metric-label">Type</div><div class="metric-value">{{ analysis.file_type }}</div></div>
+      <div class="metric"><div class="metric-label">Endianness</div><div class="metric-value">{{ analysis.endianness }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Findings ({{ risk.findings | length }})</h2>
+    {% if findings_sorted %}
+    <table>
+      <thead><tr><th>Severity</th><th>Detector</th><th>Description</th><th>Evidence</th></tr></thead>
+      <tbody>
+      {% for f in findings_sorted %}
+        <tr>
+          <td><span class="severity severity-{{ f.severity.name }}">{{ f.severity.name }}</span></td>
+          <td><strong>{{ f.detector }}</strong></td>
+          <td>{{ f.description }}</td>
+          <td><code>{{ f.evidence[:80] }}{% if f.evidence|length > 80 %}…{% endif %}</code></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p style="color: #1a7f37; font-weight: 600;">✓ No suspicious indicators detected.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Sections ({{ sections_visible | length }})</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>Flags</th><th>Entropy</th></tr></thead>
+      <tbody>
+      {% for s in sections_visible %}
+        <tr>
+          <td><code>{{ s.name }}</code></td>
+          <td><code>0x{{ '%x' % s.address }}</code></td>
+          <td>{{ '{:,}'.format(s.size) }}</td>
+          <td><code>{{ s.flags or '—' }}</code></td>
+          <td>{{ '%.2f' % s.entropy }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Imports ({{ analysis.imports | length }})</h2>
+    {% if imports_visible %}
+    <table>
+      <thead><tr>
+        {% if analysis.format == 'PE' %}<th>DLL</th><th>Function</th>
+        {% else %}<th>Symbol</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for i in imports_visible %}
+        <tr>
+          {% if analysis.format == 'PE' %}
+          <td>{{ i.dll }}</td><td><code>{{ i.function }}</code></td>
+          {% else %}
+          <td><code>{{ i.function }}</code></td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if imports_remaining > 0 %}<p>... and {{ imports_remaining }} more.</p>{% endif %}
+    {% else %}
+      <p>No imports.</p>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    Binary Recon · static analysis of ELF and PE executables
+  </div>
+
+</body>
+</html>

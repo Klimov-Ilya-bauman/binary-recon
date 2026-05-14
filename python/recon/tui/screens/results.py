@@ -40,6 +40,7 @@ class ResultsScreen(Screen):
     BINDINGS = [
         Binding("escape", "app.pop_screen", "Back",       show=True),
         Binding("b",      "app.pop_screen", "Back",       show=False),
+        Binding("e",      "export",         "Export",     show=True),
         Binding("o",      "show_tab('overview')", "Overview", show=False),
         Binding("s",      "show_tab('sections')", "Sections", show=False),
         Binding("i",      "show_tab('imports')",  "Imports",  show=False),
@@ -206,3 +207,8 @@ class ResultsScreen(Screen):
         """Переключает вкладку из биндинга (клавиши O/S/I/F/T)."""
         tabs = self.query_one("#results-tabs", TabbedContent)
         tabs.active = tab_id
+
+    def action_export(self) -> None:
+        """Открыть модальное окно экспорта (клавиша E)."""
+        from recon.tui.screens.export_modal import ExportModalScreen
+        self.app.push_screen(ExportModalScreen(self.full))
