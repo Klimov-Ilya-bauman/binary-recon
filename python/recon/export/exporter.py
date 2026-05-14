@@ -97,7 +97,7 @@ def export_markdown(full_analysis) -> str:
     add(f"# Binary Recon Report")
     add("")
     add(f"**File:** `{a.filepath}`  ")
-    add(f"**Generated:** {datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")}")
+    add(f"**Generated:** {datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')}")
     add("")
     add("---")
     add("")
