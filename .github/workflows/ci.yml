@@ -46,7 +46,11 @@ jobs:
           cd python
           ruff check recon/ || true
 
-      - name: Run smoke tests
+      - name: Run C++ tests
+        run: |
+          bash tests/core/test_hashes.sh
+
+      - name: Run Python tests
         run: |
           cd python
           python -m pytest ../tests/python -v
